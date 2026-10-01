@@ -33,10 +33,22 @@ def get_min_max_by_time(hour=None, minute=None):
         hour = time_bj.hour
     if minute is None:
         minute = time_bj.minute
-    time_rate = min((hour * 60 + minute) / (14 * 60), 1)
+    now_minutes = hour * 60 + minute
     min_step = get_int_value_default(config, 'MIN_STEP', 18000)
     max_step = get_int_value_default(config, 'MAX_STEP', 25000)
-    return int(time_rate * min_step), int(time_rate * max_step)
+    # 分段曲线：00:30 起步 100 步 -> 08:00 到 15000 -> 14:00 到 MIN_STEP/MAX_STEP，之后保持最大
+    if now_minutes < 30:
+        now_minutes = 30
+    if now_minutes < 8 * 60:
+        # 段1: 00:30~08:00，min 恒 100，max 从 100 线性涨到 15000
+        rate = (now_minutes - 30) / (8 * 60 - 30)
+        return 100, int(100 + (15000 - 100) * rate)
+    if now_minutes < 14 * 60:
+        # 段2: 08:00~14:00，min 从 100 线性涨到 MIN_STEP，max 从 15000 线性涨到 MAX_STEP
+        rate = (now_minutes - 8 * 60) / (6 * 60)
+        return int(100 + (min_step - 100) * rate), int(15000 + (max_step - 15000) * rate)
+    # 段3: 14:00 之后保持最大
+    return min_step, max_step
 
 
 # 虚拟ip地址
