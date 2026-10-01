@@ -205,6 +205,12 @@ class MiMotionRunner:
     def login_and_post_step(self, min_step, max_step):
         if self.invalid:
             return "账号或密码配置有误", False
+        # 14点后补跑判断：当天已达标则跳过（避免14点后继续产生新步数，仅作失败兜底）
+        if time_bj.hour * 60 + time_bj.minute >= 14 * 60:
+            _last = last_steps.get(self.user)
+            if _last is not None and _last.get("date") == today_str and int(_last.get("step", 0)) >= min_step:
+                self.log_str += f"今日步数已达标（{_last.get('step')}），14点后跳过本次运行\n"
+                return "今日已达标，跳过", True
         app_token = self.login()
         if app_token is None:
             return "登陆失败！", False
