@@ -34,8 +34,11 @@ def get_min_max_by_time(hour=None, minute=None):
     if minute is None:
         minute = time_bj.minute
     now_minutes = hour * 60 + minute
-    min_step = get_int_value_default(config, 'MIN_STEP', 18000)
-    max_step = get_int_value_default(config, 'MAX_STEP', 25000)
+    # 每日随机偏移：以日期为种子，每天最高值在 MAX_STEP±100 之间浮动，同一天内固定
+    day_seed = int(today_str.replace("-", ""))
+    daily_offset = random.Random(day_seed).randint(-100, 100)
+    min_step = get_int_value_default(config, 'MIN_STEP', 18000) + daily_offset
+    max_step = get_int_value_default(config, 'MAX_STEP', 25000) + daily_offset
     # 分段曲线：00:30 起步 100 步 -> 08:00 到 15000 -> 14:00 到 MIN_STEP/MAX_STEP，之后保持最大
     if now_minutes < 30:
         now_minutes = 30
