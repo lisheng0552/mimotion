@@ -201,6 +201,12 @@ class MiMotionRunner:
             return "登陆失败！", False
 
         step = str(random.randint(min_step, max_step))
+        # 同一天步数只增不减：若本次随机值小于今日已提交步数，则沿用已提交的较大值
+        if self.user in last_steps and last_steps[self.user].get("date") == today_str:
+            last_val = int(last_steps[self.user].get("step", 0))
+            if int(step) < last_val:
+                self.log_str += f"本次随机值{step}小于今日已提交{last_val}，按只增不减使用{last_val}\n"
+                step = str(last_val)
         self.log_str += f"已设置为随机步数范围({min_step}~{max_step}) 随机值:{step}\n"
         
         user_token_info = user_tokens.get(self.user, {})
@@ -213,6 +219,8 @@ class MiMotionRunner:
                 self.log_str += f"查找到已绑定设备ID: {bound_device_id}\n"
 
         ok, msg = zeppHelper.post_fake_brand_data(step, app_token, self.user_id, device_id=bound_device_id)
+        if ok:
+            last_steps[self.user] = {"date": today_str, "step": int(step)}
         return f"修改步数（{step}）[" + msg + "]", ok
 
 
@@ -257,6 +265,7 @@ def execute():
                     time.sleep(sleep_seconds)
         if encrypt_support:
             persist_user_tokens()
+            persist_last_steps()
         success_count = 0
         push_results = []
         for result in exec_results:
@@ -297,11 +306,41 @@ def persist_user_tokens():
         f.close()
 
 
+# 读取今日已提交步数（用于同日只增不减）
+def prepare_last_steps() -> dict:
+    data_path = r"last_steps.data"
+    if os.path.exists(data_path):
+        with open(data_path, 'rb') as f:
+            data = f.read()
+        try:
+            decrypted_data = decrypt_data(data, aes_key, None)
+            return json.loads(decrypted_data.decode('utf-8', errors='strict'))
+        except:
+            print("上次步数数据读取失败，忽略")
+            return dict()
+    return dict()
+
+
+# 保存今日已提交步数
+def persist_last_steps():
+    if not encrypt_support:
+        return
+    data_path = r"last_steps.data"
+    origin_str = json.dumps(last_steps, ensure_ascii=False)
+    cipher_data = encrypt_data(origin_str.encode("utf-8"), aes_key, None)
+    with open(data_path, 'wb') as f:
+        f.write(cipher_data)
+        f.flush()
+        f.close()
+
+
 if __name__ == "__main__":
     # 北京时间
     time_bj = get_beijing_time()
+    today_str = time_bj.strftime("%Y-%m-%d")
     encrypt_support = False
     user_tokens = dict()
+    last_steps = dict()
     if os.environ.__contains__("AES_KEY") is True:
         aes_key = os.environ.get("AES_KEY")
         if aes_key is not None:
@@ -310,6 +349,7 @@ if __name__ == "__main__":
                 encrypt_support = True
         if encrypt_support:
             user_tokens = prepare_user_tokens()
+            last_steps = prepare_last_steps()
         else:
             print("AES_KEY未设置或者无效 无法使用加密保存功能")
     config = dict()
